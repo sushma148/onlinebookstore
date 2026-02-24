@@ -1,37 +1,50 @@
 pipeline {
-  agent any
+    agent any
 
-  stages {
+    stages {
 
-    stage('Checkout') {
-      steps {
-        checkout scm
-      }
+        stage('Checkout') {
+            steps {
+                checkout scm
+            }
+        }
+
+        stage('Build Docker Image') {
+            steps {
+                sh '''
+                  docker build -t onlinebookstore:latest .
+                  docker tag onlinebookstore:latest dockerlog123/onlinebookstore:latest
+                '''
+            }
+        }
+
+        stage('Push to Registry (Docker Hub)') {
+            steps {
+                withCredentials([usernamePassword(
+                    credentialsId: 'dockerhub-creds',
+                    usernameVariable: 'DH_USER',
+                    passwordVariable: 'DH_PASS'
+                )]) {
+                    sh '''
+                      echo "$DH_PASS" | docker login -u "$DH_USER" --password-stdin
+                      docker push dockerlog123/onlinebookstore:latest
+                    '''
+                }
+            }
+        }
+
+        stage('Deploy Container') {
+            steps {
+                sh '''
+                  docker stop bookstore || true
+                  docker rm bookstore || true
+
+                  docker pull dockerlog123/onlinebookstore:latest
+                  docker run -d --name bookstore -p 8081:80 dockerlog123/onlinebookstore:latest
+
+                  docker ps
+                '''
+            }
+        }
     }
-
-    stage('Build Docker Image') {
-      steps {
-        sh '''
-          echo "Building Docker image..."
-          docker build -t onlinebookstore:latest .
-        '''
-      }
-    }
-
-    stage('Deploy Container') {
-      steps {
-        sh '''
-          echo "Stopping old container..."
-          docker stop bookstore || true
-          docker rm bookstore || true
-
-          echo "Starting new container..."
-          docker run -d --name bookstore -p 8081:80 onlinebookstore:latest
-
-          docker ps
-        '''
-      }
-    }
-
-  }
 }
